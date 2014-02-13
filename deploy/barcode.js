@@ -1,5 +1,5 @@
 (function() {
-  var BarcodeReader, BrightnessMapFilter, GaussianBlurFilter, GradientDifferenceFilter, GrayScaleFilter, Main, VideoSprite, VideoStream,
+  var BarcodeReader, BlackWhiteAreaFilter, BrightnessMapFilter, GradientDifferenceFilter, GrayScaleFilter, Main, ThresholdAreaFilter, ThresholdFilter, VideoSprite, VideoStream,
     __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
 
   BarcodeReader = (function() {
@@ -14,21 +14,28 @@
       this.stream = new VideoStream(this.videoElement);
       this.stream.onConnected = this.onConnected;
       this.captureStarted = false;
-      this.renderer = PIXI.autoDetectRenderer(400, 300);
+      this.renderer = PIXI.autoDetectRenderer(this.videoElement.width, this.videoElement.height);
       this.stage = new PIXI.Stage(0x343434);
       document.body.appendChild(this.renderer.view);
       requestAnimFrame(this.update);
       this.sourceTexture = null;
       this.videoSprite = null;
       this.imageSprite = null;
+      this.blackWhiteFilter = new BlackWhiteAreaFilter();
       this.grayscaleFilter = new GrayScaleFilter();
       this.brightnessMapFilter = new BrightnessMapFilter();
       this.gaussianBlurFilter = new PIXI.BlurFilter();
+      this.gaussianBlurFilter.blur = 20;
       this.gradientDifferenceFilter = new GradientDifferenceFilter();
+      this.thresholdFilter = new ThresholdFilter();
+      this.thresholdAreaFilter = new ThresholdAreaFilter();
+      this.enableBlackWhite = false;
       this.enableGrayScale = true;
       this.enableBrightnessMap = false;
       this.enableGaussian = false;
       this.enableGradientDifference = false;
+      this.enableThreshold = false;
+      this.enableThresholdArea = false;
       this.initImageCapture();
       return null;
     };
@@ -41,7 +48,9 @@
     };
 
     BarcodeReader.prototype.initImageCapture = function() {
-      this.imageSprite = new PIXI.Sprite(PIXI.Texture.fromImage("barcode.png"));
+      var source;
+      source = document.getElementById("image").src;
+      this.imageSprite = new PIXI.Sprite(PIXI.Texture.fromImage(source));
       this.stage.addChild(this.imageSprite);
       return null;
     };
@@ -68,6 +77,9 @@
         sourceSprite = this.imageSprite;
       }
       filters = [];
+      if (this.enableBlackWhite) {
+        filters.push(this.blackWhiteFilter);
+      }
       if (this.enableGrayScale) {
         filters.push(this.grayscaleFilter);
       }
@@ -79,6 +91,12 @@
       }
       if (this.enableGradientDifference) {
         filters.push(this.gradientDifferenceFilter);
+      }
+      if (this.enableThreshold) {
+        filters.push(this.thresholdFilter);
+      }
+      if (this.enableThresholdArea) {
+        filters.push(this.thresholdAreaFilter);
       }
       if (filters.length) {
         sourceSprite.filters = filters;
@@ -112,6 +130,13 @@
       var _this = this;
       this.gui = new dat.GUI();
       this.gui.add(this.reader.stream, "connect").name("Connect Webcam");
+      this.blackWhiteFolder = this.gui.addFolder("Black White Area");
+      this.blackWhiteFolder.open();
+      this.blackWhiteFolder.add(this.reader, "enableBlackWhite").name("enable").onChange(function() {
+        return _this.reader.updateFilters();
+      });
+      this.blackWhiteFolder.add(this.reader.blackWhiteFilter, "upper", 0, 1).step(0.01);
+      this.blackWhiteFolder.add(this.reader.blackWhiteFilter, "lower", 0, 1).step(0.01);
       this.grayScaleFolder = this.gui.addFolder("Grayscale");
       this.grayScaleFolder.open();
       this.grayScaleFolder.add(this.reader, "enableGrayScale").name("enable").onChange(function() {
@@ -131,12 +156,25 @@
       this.gaussianFolder.add(this.reader, "enableGaussian").name("enable").onChange(function() {
         return _this.reader.updateFilters();
       });
-      this.gaussianFolder.add(this.reader.gaussianBlurFilter, "blur", 0, 20).step(0.5);
+      this.gaussianFolder.add(this.reader.gaussianBlurFilter, "blur", 0, 100).step(.5);
       this.gradientDifferenceFolder = this.gui.addFolder("Gradient Difference");
       this.gradientDifferenceFolder.open();
       this.gradientDifferenceFolder.add(this.reader, "enableGradientDifference").name("enable").onChange(function() {
         return _this.reader.updateFilters();
       });
+      this.gradientDifferenceFolder.add(this.reader.gradientDifferenceFilter, "multiplier", 0, 5.0).step(0.01);
+      this.thresholdFolder = this.gui.addFolder("Threshold");
+      this.thresholdFolder.open();
+      this.thresholdFolder.add(this.reader, "enableThreshold").name("enable").onChange(function() {
+        return _this.reader.updateFilters();
+      });
+      this.thresholdFolder.add(this.reader.thresholdFilter, "threshold", 0, 1).step(0.01);
+      this.thresholdAreaFolder = this.gui.addFolder("Threshold Area");
+      this.thresholdAreaFolder.open();
+      this.thresholdAreaFolder.add(this.reader, "enableThresholdArea").name("enable").onChange(function() {
+        return _this.reader.updateFilters();
+      });
+      this.thresholdAreaFolder.add(this.reader.thresholdAreaFilter, "threshold", 0, 1).step(0.01);
       return null;
     };
 
@@ -224,6 +262,48 @@
 
   })();
 
+  BlackWhiteAreaFilter = (function() {
+    function BlackWhiteAreaFilter() {
+      PIXI.AbstractFilter.call(this);
+      this.passes = [this];
+      this.uniforms = {
+        upper: {
+          type: "1f",
+          value: 0.8
+        },
+        lower: {
+          type: "1f",
+          value: 0.2
+        }
+      };
+      this.fragmentSrc = ['precision mediump float;', 'uniform sampler2D uSampler;', 'varying vec2 vTextureCoord;', 'varying vec4 vColor;', 'uniform float upper;', 'uniform float lower;', 'void main(void) {', '   vec4 pix = texture2D(uSampler,vTextureCoord);', '   vec4 result;', '   float luminance = (0.299*pix.r) + (0.587*pix.g) + (0.114*pix.b);', '   if(luminance <= lower){', '       result = vec4(luminance,luminance,luminance,1);', '   }else', '   if(luminance >= upper ){', '       result = vec4(luminance,luminance,luminance,1);', '   }else{', '       result = vec4(0);', '   }', '   gl_FragColor = result;', '}'];
+    }
+
+    BlackWhiteAreaFilter.prototype = Object.create(PIXI.AbstractFilter.prototype);
+
+    Object.defineProperties(BlackWhiteAreaFilter.prototype, {
+      upper: {
+        get: function() {
+          return this.uniforms.upper.value;
+        },
+        set: function(value) {
+          return this.uniforms.upper.value = value;
+        }
+      },
+      lower: {
+        get: function() {
+          return this.uniforms.lower.value;
+        },
+        set: function(value) {
+          return this.uniforms.lower.value = value;
+        }
+      }
+    });
+
+    return BlackWhiteAreaFilter;
+
+  })();
+
   BrightnessMapFilter = (function() {
     function BrightnessMapFilter() {
       PIXI.AbstractFilter.call(this);
@@ -270,47 +350,31 @@
 
   })();
 
-  GaussianBlurFilter = (function() {
-    function GaussianBlurFilter(x, y) {
-      if (x == null) {
-        x = 1.0;
-      }
-      if (y == null) {
-        y = 0.0;
-      }
-      PIXI.AbstractFilter.call(this);
-      this.passes = [this];
-      this.uniforms = {
-        direction: {
-          type: "2f",
-          value: {
-            x: x,
-            y: y
-          }
-        }
-      };
-      this.fragmentSrc = ['precision highp float;', 'uniform sampler2D uSampler;', 'varying vec2 vTextureCoord;', 'varying vec4 vColor;', 'uniform vec2 direction;', 'void main(void) {', '   vec4 sum = vec4(0);', '   sum += texture2D(uSampler, vTextureCoord - (direction*4.0) * 0.05;', '   sum += texture2D(uSampler, vTextureCoord - direction*3.0) * 0.09;', '   sum += texture2D(uSampler, vTextureCoord - direction*2.0) * 0.12;', '   sum += texture2D(uSampler, vTextureCoord - direction) * 0.15;', '   sum += texture2D(uSampler, vTextureCoord) * 0.18;', '   sum += texture2D(uSampler, vTextureCoord + direction) * 0.15;', '   sum += texture2D(uSampler, vTextureCoord + direction*2.0) * 0.12;', '   sum += texture2D(uSampler, vTextureCoord + direction*3.0) * 0.09;', '   sum += texture2D(uSampler, vTextureCoord + direction*4.0) * 0.05;', '   gl_FragColor = abs(sum);', '}'];
-    }
-
-    GaussianBlurFilter.prototype = Object.create(PIXI.AbstractFilter.prototype);
-
-    GaussianBlurFilter.prototype.set = function(x, y) {
-      this.uniforms.direction.value.x = x;
-      this.uniforms.direction.value.y = y;
-      return null;
-    };
-
-    return GaussianBlurFilter;
-
-  })();
-
   GradientDifferenceFilter = (function() {
     function GradientDifferenceFilter() {
       PIXI.AbstractFilter.call(this);
       this.passes = [this];
-      this.uniforms = {};
-      this.fragmentSrc = ['precision highp float;', 'uniform sampler2D uSampler;', 'varying vec2 vTextureCoord;', 'varying vec4 vColor;', 'void main(void) {', '   vec4 result = vec4(0);', '   vec4 value = texture2D(uSampler,vTextureCoord);', '   result.r = value.g - value.r;', '   result.g = value.b - value.a;', '   result.b = 0.0;', '   result.a = 1.0;', '   gl_FragColor = result;', '}'];
+      this.uniforms = {
+        multiplier: {
+          type: "1f",
+          value: 2.5
+        }
+      };
+      this.fragmentSrc = ['precision mediump float;', 'uniform sampler2D uSampler;', 'varying vec2 vTextureCoord;', 'varying vec4 vColor;', 'uniform float multiplier;', 'void main(void) {', '   vec4 value = texture2D(uSampler,vTextureCoord);', '   vec4 result = vec4(0);', '   result.r = value.r - value.g;', '   result.g = value.b - value.a;', '   result.b = 0.0;', '   result.a = 1.0;', '   result.r = result.r * multiplier;', '   result.g = result.g * multiplier;', '   gl_FragColor = abs(result);', '}'];
     }
+
+    GradientDifferenceFilter.prototype = Object.create(PIXI.AbstractFilter.prototype);
+
+    Object.defineProperties(GradientDifferenceFilter.prototype, {
+      multiplier: {
+        get: function() {
+          return this.uniforms.multiplier.value;
+        },
+        set: function(value) {
+          return this.uniforms.multiplier.value = value;
+        }
+      }
+    });
 
     return GradientDifferenceFilter;
 
@@ -363,6 +427,66 @@
     });
 
     return GrayScaleFilter;
+
+  })();
+
+  ThresholdAreaFilter = (function() {
+    function ThresholdAreaFilter() {
+      PIXI.AbstractFilter.call(this);
+      this.passes = [this];
+      this.uniforms = {
+        threshold: {
+          type: "1f",
+          value: 0.5
+        }
+      };
+      this.fragmentSrc = ['precision mediump float;', 'uniform sampler2D uSampler;', 'varying vec2 vTextureCoord;', 'varying vec4 vColor;', 'uniform float threshold;', 'void main(void) {', '   vec4 value = texture2D(uSampler,vTextureCoord);', '   vec4 up = texture2D(uSampler,vTextureCoord+vec2(0,0.001));', '   vec4 down = texture2D(uSampler,vTextureCoord+vec2(0,-0.001));', '   vec4 left = texture2D(uSampler,vTextureCoord+vec2(-0.001,0));', '   vec4 right = texture2D(uSampler,vTextureCoord+vec2(-0.001,0));', '   int count = 0;', '   if(up.r >= threshold){', '       count++;', '   }', '   if(down.r >= threshold){', '       count++;', '   }', '   if(left.r >= threshold){', '       count++;', '   }', '   if(right.r >= threshold){', '       count++;', '   }', '   if(count > 0){', '       value = vec4(1);', '   }', '   gl_FragColor = value;', '}'];
+    }
+
+    ThresholdAreaFilter.prototype = Object.create(PIXI.AbstractFilter.prototype);
+
+    Object.defineProperties(ThresholdAreaFilter.prototype, {
+      threshold: {
+        get: function() {
+          return this.uniforms.threshold.value;
+        },
+        set: function(value) {
+          return this.uniforms.threshold.value = value;
+        }
+      }
+    });
+
+    return ThresholdAreaFilter;
+
+  })();
+
+  ThresholdFilter = (function() {
+    function ThresholdFilter() {
+      PIXI.AbstractFilter.call(this);
+      this.passes = [this];
+      this.uniforms = {
+        threshold: {
+          type: "1f",
+          value: 0.11
+        }
+      };
+      this.fragmentSrc = ['precision mediump float;', 'uniform sampler2D uSampler;', 'varying vec2 vTextureCoord;', 'varying vec4 vColor;', 'uniform float threshold;', 'void main(void) {', '   vec4 value = texture2D(uSampler,vTextureCoord);', '   float luminance = ( value.r + value.g ) / 2.0;', '   if(luminance >= threshold){', '       luminance = 1.0;', '   }else{', '       luminance = 0.0;', '   }', '   gl_FragColor = vec4(luminance,luminance,luminance,1);', '}'];
+    }
+
+    ThresholdFilter.prototype = Object.create(PIXI.AbstractFilter.prototype);
+
+    Object.defineProperties(ThresholdFilter.prototype, {
+      threshold: {
+        get: function() {
+          return this.uniforms.threshold.value;
+        },
+        set: function(value) {
+          return this.uniforms.threshold.value = value;
+        }
+      }
+    });
+
+    return ThresholdFilter;
 
   })();
 

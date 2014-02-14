@@ -64,13 +64,19 @@ class Main
 
     @thresholdFolder.add(@reader.thresholdFilter,"threshold",0,1).step(0.01)
 
-    # Threshold Filter
+    # Threshold Area Filter
     @thresholdAreaFolder = @gui.addFolder "Threshold Area"
     @thresholdAreaFolder.open()
     @thresholdAreaFolder.add(@reader, "enableThresholdArea").name("enable").onChange ()=>
       @reader.updateFilters()
 
     @thresholdAreaFolder.add(@reader.thresholdAreaFilter,"threshold",0,1).step(0.01)
+
+    # Fast Edge Filter
+    @gaussianFolder = @gui.addFolder "Fast Edge"
+    @gaussianFolder.open()
+    @gaussianFolder.add(@reader, "enableFastEdge").name("enable").onChange ()=>
+      @reader.updateFilters()
 
     null
 

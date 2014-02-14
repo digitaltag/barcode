@@ -7,6 +7,7 @@ class GradientDifferenceFilter
 
     @passes = [@]
 
+    # Added multipler to bump up the R/G output.
     @uniforms =
       multiplier:
         type: "1f"

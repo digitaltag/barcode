@@ -1,5 +1,9 @@
 
-class ThresholdAreaFilter
+# Quick implementation of edge detection
+# Used after a threshold filter.
+
+
+class FastEdgeFilter
 
   constructor:()->
     #---
@@ -8,9 +12,6 @@ class ThresholdAreaFilter
     @passes = [@]
 
     @uniforms =
-      threshold:
-        type: "1f"
-        value: 0.5
       size:
         type: "1f"
         value: 1/512
@@ -20,7 +21,6 @@ class ThresholdAreaFilter
       'uniform sampler2D uSampler;'
       'varying vec2 vTextureCoord;'
       'varying vec4 vColor;'
-      'uniform float threshold;'
       'uniform float size;'
 
       'void main(void) {'
@@ -30,35 +30,32 @@ class ThresholdAreaFilter
       '   vec4 left = texture2D(uSampler,vTextureCoord+vec2(-size,0));'
       '   vec4 right = texture2D(uSampler,vTextureCoord+vec2(size,0));'
 
-      # applying to a black white image so only check one channel
       '   int count = 0;'
-      '   if(up.r >= threshold){'
+      '   if(up.r >= 1.0){'
       '       count++;'
       '   }'
-      '   if(down.r >= threshold){'
+      '   if(down.r >= 1.0){'
       '       count++;'
       '   }'
-      '   if(left.r >= threshold){'
+      '   if(left.r >= 1.0){'
       '       count++;'
       '   }'
-      '   if(right.r >= threshold){'
+      '   if(right.r >= 1.0){'
       '       count++;'
       '   }'
-      '   if(count > 0){'
+      '   if(count == 1){'
       '       value = vec4(1);'
+      '   }else{'
+      '       value = vec4(0);'
+      '       value.a = 1.0;'
       '   }'
       '   gl_FragColor = value;'
       '}'
     ]
 
-  ThresholdAreaFilter.prototype = Object.create PIXI.AbstractFilter.prototype
+  FastEdgeFilter.prototype = Object.create PIXI.AbstractFilter.prototype
 
   Object.defineProperties @::,
-    threshold:
-      get: ->
-        @uniforms.threshold.value
-      set: (value) ->
-        @uniforms.threshold.value = value
     size:
       get: ->
         @uniforms.size.value

@@ -1,4 +1,6 @@
 
+# Custom Pixi Sprite to render Video into a WebGL Texture.
+
 class VideoSprite
   constructor:( @videoElement )->
     @canvas = document.createElement "canvas"

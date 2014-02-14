@@ -22,15 +22,20 @@ class BarcodeReader
     @videoSprite = null
     @imageSprite = null
 
+    # set size for neighbouring texel shaders
+    size = 1/@videoElement.height
+
     # create filters
     @blackWhiteFilter = new BlackWhiteAreaFilter()
     @grayscaleFilter = new GrayScaleFilter()
     @brightnessMapFilter = new BrightnessMapFilter()
+    @brightnessMapFilter.size = size
     @gaussianBlurFilter = new PIXI.BlurFilter()
-    @gaussianBlurFilter.blur = 20
+    @gaussianBlurFilter.blur = 40
     @gradientDifferenceFilter = new GradientDifferenceFilter()
     @thresholdFilter = new ThresholdFilter()
     @thresholdAreaFilter = new ThresholdAreaFilter()
+    @fastEdgeFilter = new FastEdgeFilter()
 
     # enable or disable filters
     @enableBlackWhite = false
@@ -40,6 +45,7 @@ class BarcodeReader
     @enableGradientDifference = false
     @enableThreshold = false
     @enableThresholdArea = false
+    @enableFastEdge = false
 
     @initImageCapture()
 
@@ -106,6 +112,9 @@ class BarcodeReader
 
     if @enableThresholdArea
       filters.push @thresholdAreaFilter
+
+    if @enableFastEdge
+      filters.push @fastEdgeFilter
 
     if filters.length
       sourceSprite.filters = filters

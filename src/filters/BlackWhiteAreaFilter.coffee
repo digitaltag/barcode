@@ -26,6 +26,7 @@ class BlackWhiteAreaFilter
       'void main(void) {'
       '   vec4 pix = texture2D(uSampler,vTextureCoord);'
       '   vec4 result;'
+
       # Luminance calculations.
       # Luminance (standard, objective): (0.2126*R) + (0.7152*G) + (0.0722*B)
       # Luminance (perceived option 1): (0.299*R + 0.587*G + 0.114*B)

@@ -26,7 +26,7 @@ class BrightnessMapFilter
                 0,-0.25,0]
       size:
         type: '1f'
-        value: 0.0025
+        value: 1/512
 
     @fragmentSrc = [
       'precision mediump float;'
